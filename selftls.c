@@ -36,8 +36,10 @@ int main(int argc, char **argv)
 		step = argv[1][0] - '0';
 		ifi = argv[2];
 	}
-
+	
+	/* load encryption & hash algorithms for SSL */
 	SSL_library_init();
+	/* load the error strings for good error reporting */
 	SSL_load_error_strings();
 	ERR_load_BIO_strings();
 	OpenSSL_add_all_algorithms();
@@ -50,9 +52,11 @@ int main(int argc, char **argv)
 		err();
 	if (!(server = SSL_new(sctx)))
 		err();
-
+	/* I/O abstraction provided by OpenSSL 
+    	/* As long as a BIO structure is set up properly, you can establish SSL connections over any I/O. */
 	sinbio = BIO_new(BIO_s_mem());
 	soutbio = BIO_new(BIO_s_mem());
+	/* set server's bio */
 	SSL_set_bio(server, sinbio, soutbio);
 	SSL_set_accept_state(server);
 
@@ -60,7 +64,7 @@ int main(int argc, char **argv)
 		err();
 	if (!(client = SSL_new(cctx)))
 		err();
-
+    	
 	cinbio = BIO_new(BIO_s_mem());
 	coutbio = BIO_new(BIO_s_mem());
 	SSL_set_bio(client, cinbio, coutbio);
@@ -68,7 +72,7 @@ int main(int argc, char **argv)
 
 	c = 0;
 	do {
-
+		/* SSL Renegotiation Initiated by the SSL Client */
 		r = SSL_do_handshake(client);
 		if (r == -1) {
 			if ((SSL_get_error(client, r) != SSL_ERROR_WANT_WRITE)
@@ -76,13 +80,14 @@ int main(int argc, char **argv)
 				SSL_ERROR_WANT_READ))
 				err();
 		}
-
+		/* read data from coutbio and store in buf */
 		r = BIO_read(coutbio, buf, 4096);
 		if (r == -1)
 			err();
 		c++;
 
 		if (c == step) {
+			/* A strategic place to start afl */
 #ifdef __AFL_HAVE_MANUAL_CONTROL
 			__AFL_INIT();
 #endif
@@ -93,8 +98,10 @@ int main(int argc, char **argv)
 			f = fopen(fn, "wb");
 			fwrite(buf, 1, r, f);
 		}
+		/* write data from buf to sinbio */
 		BIO_write(sinbio, buf, r);
-
+		
+		/* SSL Renegotiation Initiated by the SSL Server */
 		r = SSL_do_handshake(server);
 		if (r == -1) {
 			if ((SSL_get_error(server, r) != SSL_ERROR_WANT_WRITE)
@@ -108,6 +115,7 @@ int main(int argc, char **argv)
 			err();
 		c++;
 		if (c == step) {
+			/* A strategic place to start afl */
 #ifdef __AFL_HAVE_MANUAL_CONTROL
 			__AFL_INIT();
 #endif
